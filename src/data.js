@@ -1,0 +1,80 @@
+import Papa from 'papaparse';
+
+const DATA_URL = import.meta.env.VITE_DATA_URL || 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQafWS5_N0LDnjEFJ1iozwYDNHfaQJHTUQOkbL4VI6SUo6SGXOb_tzuGoUWrNmdKhgWtlFaYJW5P_bU/pub?gid=0&single=true&output=csv';
+const REFRESH_MS = Number(import.meta.env.VITE_REFRESH_MS || 60000);
+
+const aliases = {
+  name: ['Name','name'],
+  lga: ['Local Government','LGA','local_government','lga_name'],
+  category: ['Waste Category','Waste_Category','waste_category','Category'],
+  lat: ['_Coordinates_latitude','Coordinates_latitude','latitude','Latitude','lat'],
+  lon: ['_Coordinates_longitude','Coordinates_longitude','longitude','Longitude','lon'],
+  picture: ['Picture_URL','Picture URL','picture_url','Image URL','image_url'],
+  submitted: ['_submission_time','submission_time','Submission Time'],
+  uuid: ['_uuid','uuid'],
+  status: ['_status','status']
+};
+
+function find(row, names){
+  const key = Object.keys(row).find(k => names.some(n => k.trim().toLowerCase() === n.toLowerCase()));
+  return key ? row[key] : '';
+}
+
+function coordinateKey(lat, lon){
+  if(!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+  return `${lat.toFixed(6)},${lon.toFixed(6)}`;
+}
+
+export function normalizeRows(rows){
+  const normalized = rows.map((row, i) => {
+    const lat = Number(find(row, aliases.lat));
+    const lon = Number(find(row, aliases.lon));
+    const name = String(find(row, aliases.name) || '').trim();
+    const lga = String(find(row, aliases.lga) || '').trim();
+    const category = String(find(row, aliases.category) || '').trim();
+
+    return {
+      id: String(find(row, aliases.uuid) || i + 1),
+      name: name || 'Unknown Submitter',
+      lga: lga || 'Unknown',
+      category: category || 'Unclassified',
+      lat,
+      lon,
+      coordinateKey: coordinateKey(lat, lon),
+      picture: String(find(row, aliases.picture) || '').trim(),
+      submitted: String(find(row, aliases.submitted) || '').trim(),
+      status: String(find(row, aliases.status) || '').trim()
+    };
+  });
+
+  const coordinateCounts = {};
+  normalized.forEach(row => {
+    if(row.coordinateKey) coordinateCounts[row.coordinateKey] = (coordinateCounts[row.coordinateKey] || 0) + 1;
+  });
+
+  return normalized.map(row => ({
+    ...row,
+    duplicate: Boolean(row.coordinateKey && coordinateCounts[row.coordinateKey] > 1),
+    coordinateCount: row.coordinateKey ? coordinateCounts[row.coordinateKey] : 0,
+    errors: [
+      !Number.isFinite(row.lat) || !Number.isFinite(row.lon) ? 'Invalid or missing coordinates' : '',
+      row.duplicate ? 'Duplicate coordinates' : '',
+      row.name === 'Unknown Submitter' ? 'Missing Name' : '',
+      row.lga === 'Unknown' ? 'Missing Local Government' : '',
+      row.category === 'Unclassified' ? 'Missing Waste Category' : ''
+    ].filter(Boolean)
+  }));
+}
+
+export async function loadData(){
+  const res = await fetch(`${DATA_URL}${DATA_URL.includes('?') ? '&' : '?'}_=${Date.now()}`, {cache:'no-store'});
+  if(!res.ok) throw new Error(`Data source returned ${res.status}`);
+  return parse(await res.text());
+}
+
+function parse(csv){
+  const result = Papa.parse(csv, {header:true, skipEmptyLines:true, transformHeader: h => h.trim()});
+  return normalizeRows(result.data);
+}
+
+export { REFRESH_MS };
