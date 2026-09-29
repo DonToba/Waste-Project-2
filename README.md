@@ -13,7 +13,6 @@ The dashboard does not contain a Kobo API token.
 
 ## Published data source
 
-https://docs.google.com/spreadsheets/d/e/2PACX-1vQafWS5_N0LDnjEFJ1iozwYDNHfaQJHTUQOkbL4VI6SUo6SGXOb_tzuGoUWrNmdKhgWtlFaYJW5P_bU/pub?gid=0&single=true&output=csv
 
 ## Main features
 
