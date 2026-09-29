@@ -20,6 +20,27 @@ function find(row, names){
   return key ? row[key] : '';
 }
 
+// Simplified Lagos State AOI polygon. Used as an operational screening boundary.
+// Points outside this polygon are flagged for review; they are not discarded.
+const LAGOS_AOI = [
+  [6.708, 3.000], [6.875, 3.270], [6.885, 3.560], [6.835, 3.720],
+  [6.760, 3.900], [6.650, 4.015], [6.500, 4.080], [6.405, 4.000],
+  [6.335, 3.820], [6.290, 3.560], [6.285, 3.250], [6.305, 2.980],
+  [6.360, 2.790], [6.430, 2.690], [6.535, 2.690], [6.625, 2.800]
+];
+
+function pointInPolygon(lat, lon, polygon=LAGOS_AOI){
+  let inside = false;
+  for(let i=0, j=polygon.length-1; i<polygon.length; j=i++){
+    const yi=polygon[i][0], xi=polygon[i][1];
+    const yj=polygon[j][0], xj=polygon[j][1];
+    const intersects = ((yi > lat) !== (yj > lat)) &&
+      (lon < (xj-xi) * (lat-yi) / ((yj-yi) || Number.EPSILON) + xi);
+    if(intersects) inside=!inside;
+  }
+  return inside;
+}
+
 function coordinateKey(lat, lon){
   if(!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
   return `${lat.toFixed(6)},${lon.toFixed(6)}`;
@@ -41,6 +62,7 @@ export function normalizeRows(rows){
       lat,
       lon,
       coordinateKey: coordinateKey(lat, lon),
+      inLagosAOI: Number.isFinite(lat) && Number.isFinite(lon) ? pointInPolygon(lat, lon) : false,
       picture: String(find(row, aliases.picture) || '').trim(),
       submitted: String(find(row, aliases.submitted) || '').trim(),
       status: String(find(row, aliases.status) || '').trim()
@@ -58,6 +80,7 @@ export function normalizeRows(rows){
     coordinateCount: row.coordinateKey ? coordinateCounts[row.coordinateKey] : 0,
     errors: [
       !Number.isFinite(row.lat) || !Number.isFinite(row.lon) ? 'Invalid or missing coordinates' : '',
+      Number.isFinite(row.lat) && Number.isFinite(row.lon) && !row.inLagosAOI ? 'Outside Lagos AOI' : '',
       row.duplicate ? 'Duplicate coordinates' : '',
       row.name === 'Unknown Submitter' ? 'Missing Name' : '',
       row.lga === 'Unknown' ? 'Missing Local Government' : '',
@@ -77,4 +100,4 @@ function parse(csv){
   return normalizeRows(result.data);
 }
 
-export { REFRESH_MS };
+export { REFRESH_MS, LAGOS_AOI };
