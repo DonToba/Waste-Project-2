@@ -46,3 +46,7 @@ The dashboard requests the published CSV directly from the browser. If the deplo
 Every submission with valid latitude/longitude is screened against the embedded Lagos AOI polygon. Records outside the AOI are retained but flagged as **Outside Lagos AOI** and counted as data-integrity errors. They are highlighted in amber on the map.
 
 The AOI is currently an embedded screening polygon in `src/data.js`. For production enforcement, replace `LAGOS_AOI` with the official Lagos State/AOI GeoJSON boundary supplied by the project.
+
+## Leaderboard name matching
+
+The leaderboard uses the `Name` column. Names are grouped by the **first name, case-insensitively**, so entries such as `Ijeoma Victory`, `Ijeoma victory`, and `ijeoma viptory` are shown as one leaderboard person. The displayed name is selected from the most frequently submitted full-name variant and formatted in title case, e.g. `Abdullahi alamu` becomes `Abdullahi Alamu`.

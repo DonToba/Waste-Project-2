@@ -26,18 +26,62 @@ function FitBounds({rows}){
   return null;
 }
 
+function titleCaseName(value){
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function firstNameKey(value){
+  const cleaned = String(value || '').trim().replace(/\s+/g, ' ');
+  return (cleaned.split(' ')[0] || 'unknown submitter').toLowerCase();
+}
+
 function getLeaderboard(rows){
   const people = {};
+
   rows.forEach(r => {
-    const key = r.name.trim() || 'Unknown Submitter';
-    if(!people[key]) people[key] = {name:key, submissions:0, uniqueSites:new Set(), duplicates:0, errors:0};
+    const rawName = String(r.name || '').trim().replace(/\s+/g, ' ');
+    const key = firstNameKey(rawName);
+
+    if(!people[key]){
+      people[key] = {
+        nameVariants: {},
+        submissions: 0,
+        uniqueSites: new Set(),
+        duplicates: 0,
+        errors: 0
+      };
+    }
+
+    const variantKey = rawName.toLowerCase();
+    people[key].nameVariants[variantKey] = (people[key].nameVariants[variantKey] || 0) + 1;
     people[key].submissions += 1;
     if(r.coordinateKey) people[key].uniqueSites.add(r.coordinateKey);
     if(r.duplicate) people[key].duplicates += 1;
     if(r.errors.length) people[key].errors += 1;
   });
-  return Object.values(people)
-    .map(p => ({...p, uniqueSites:p.uniqueSites.size}))
+
+  return Object.entries(people)
+    .map(([firstName, p]) => {
+      // Use the most frequently submitted full-name variant as the display name,
+      // then standardise capitalization (e.g. "Abdullahi alamu" -> "Abdullahi Alamu").
+      const preferredVariant = Object.entries(p.nameVariants)
+        .sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || firstName;
+
+      return {
+        name: titleCaseName(preferredVariant),
+        submissions: p.submissions,
+        uniqueSites: p.uniqueSites.size,
+        duplicates: p.duplicates,
+        errors: p.errors
+      };
+    })
     .sort((a,b) => b.submissions-a.submissions || b.uniqueSites-a.uniqueSites || a.name.localeCompare(b.name));
 }
 
