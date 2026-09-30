@@ -5,8 +5,6 @@ Vercel-ready React + Vite dashboard for the Nervs waste data collection exercise
 ## Live data source
 The dashboard reads directly from the published KoboToolbox CSV:
 
-https://eu.kobotoolbox.org/api/v2/assets/aaYJotxgaw6j3TzANYkCnN/export-settings/esDwByc2Q5Xc2iiSnctpFBF/data.csv
-
 No sample Excel records are bundled or used as a fallback.
 
 ## Data fields displayed
@@ -32,10 +30,7 @@ npm run build
 Import the GitHub repository into Vercel. Vercel will detect Vite automatically.
 
 Optional environment variables:
-```text
-VITE_DATA_URL=https://eu.kobotoolbox.org/api/v2/assets/aaYJotxgaw6j3TzANYkCnN/export-settings/esDwByc2Q5Xc2iiSnctpFBF/data.csv
-VITE_REFRESH_MS=60000
-```
+
 
 ## Important: browser access to Kobo
 The dashboard requests the published CSV directly from the browser. If the deployed Vercel site shows a CORS/network error, use a Vercel serverless proxy to fetch the Kobo CSV server-side. Do not expose Kobo API credentials in frontend code.
@@ -49,4 +44,3 @@ The AOI is currently an embedded screening polygon in `src/data.js`. For product
 
 ## Leaderboard name matching
 
-The leaderboard uses the `Name` column. Names are grouped by the **first name, case-insensitively**, so entries such as `Ijeoma Victory`, `Ijeoma victory`, and `ijeoma viptory` are shown as one leaderboard person. The displayed name is selected from the most frequently submitted full-name variant and formatted in title case, e.g. `Abdullahi alamu` becomes `Abdullahi Alamu`.
