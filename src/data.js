@@ -48,8 +48,10 @@ function coordinateKey(lat, lon){
 
 export function normalizeRows(rows){
   const normalized = rows.map((row, i) => {
-    const lat = Number(find(row, aliases.lat));
-    const lon = Number(find(row, aliases.lon));
+    const latRaw = String(find(row, aliases.lat) ?? '').trim();
+    const lonRaw = String(find(row, aliases.lon) ?? '').trim();
+    const lat = latRaw === '' ? Number.NaN : Number(latRaw);
+    const lon = lonRaw === '' ? Number.NaN : Number(lonRaw);
     const name = String(find(row, aliases.name) || '').trim();
     const lga = String(find(row, aliases.lga) || '').trim();
     const category = String(find(row, aliases.category) || '').trim();
@@ -61,7 +63,7 @@ export function normalizeRows(rows){
       category: category || 'Unclassified',
       lat,
       lon,
-      coordinateKey: coordinateKey(lat, lon),
+      coordinateKey: Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 ? coordinateKey(lat, lon) : '',
       inLagosAOI: Number.isFinite(lat) && Number.isFinite(lon) ? pointInPolygon(lat, lon) : false,
       picture: String(find(row, aliases.picture) || '').trim(),
       submitted: String(find(row, aliases.submitted) || '').trim(),
@@ -74,19 +76,32 @@ export function normalizeRows(rows){
     if(row.coordinateKey) coordinateCounts[row.coordinateKey] = (coordinateCounts[row.coordinateKey] || 0) + 1;
   });
 
-  return normalized.map(row => ({
-    ...row,
-    duplicate: Boolean(row.coordinateKey && coordinateCounts[row.coordinateKey] > 1),
-    coordinateCount: row.coordinateKey ? coordinateCounts[row.coordinateKey] : 0,
-    errors: [
-      !Number.isFinite(row.lat) || !Number.isFinite(row.lon) ? 'Invalid or missing coordinates' : '',
-      Number.isFinite(row.lat) && Number.isFinite(row.lon) && !row.inLagosAOI ? 'Outside Lagos AOI' : '',
-      row.duplicate ? 'Duplicate coordinates' : '',
-      row.name === 'Unknown Submitter' ? 'Missing Name' : '',
-      row.lga === 'Unknown' ? 'Missing Local Government' : '',
-      row.category === 'Unclassified' ? 'Missing Waste Category' : ''
-    ].filter(Boolean)
-  }));
+  // Mark every row that shares a coordinate for map review, but count only
+  // occurrences after the first as duplicate submissions. This makes:
+  // valid coordinate records = unique sites + duplicate submissions.
+  const seenCoordinates = new Set();
+  return normalized.map(row => {
+    const duplicate = Boolean(row.coordinateKey && coordinateCounts[row.coordinateKey] > 1);
+    const duplicateSubmission = Boolean(row.coordinateKey && seenCoordinates.has(row.coordinateKey));
+    if(row.coordinateKey) seenCoordinates.add(row.coordinateKey);
+    const invalidCoordinates = !Number.isFinite(row.lat) || !Number.isFinite(row.lon) ||
+      row.lat < -90 || row.lat > 90 || row.lon < -180 || row.lon > 180;
+
+    return {
+      ...row,
+      duplicate,
+      duplicateSubmission,
+      coordinateCount: row.coordinateKey ? coordinateCounts[row.coordinateKey] : 0,
+      // Data errors are missing/invalid fields only. Duplicate and AOI flags
+      // are tracked separately and must not inflate this KPI.
+      errors: [
+        invalidCoordinates ? 'Invalid or missing coordinates' : '',
+        row.name === 'Unknown Submitter' ? 'Missing Name' : '',
+        row.lga === 'Unknown' ? 'Missing Local Government' : '',
+        row.category === 'Unclassified' ? 'Missing Waste Category' : ''
+      ].filter(Boolean)
+    };
+  });
 }
 
 export async function loadData(){

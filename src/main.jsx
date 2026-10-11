@@ -65,8 +65,8 @@ function getLeaderboard(rows){
     people[key].submissions += 1;
     if(r.coordinateKey) people[key].uniqueSites.add(r.coordinateKey);
     // Count only records with valid coordinates that are not shared by any other submission.
-    if(r.coordinateKey && !r.duplicate) people[key].uniqueSubmissions += 1;
-    if(r.duplicate) people[key].duplicates += 1;
+    if(r.coordinateKey && !r.duplicateSubmission) people[key].uniqueSubmissions += 1;
+    if(r.duplicateSubmission) people[key].duplicates += 1;
     if(r.errors.length) people[key].errors += 1;
   });
 
@@ -139,6 +139,7 @@ function App(){
   const maxLga=Math.max(1,...lgaCounts.map(x=>x[1]));
   const leaderboard=useMemo(()=>getLeaderboard(rows),[rows]);
   const duplicateRows=useMemo(()=>rows.filter(r=>r.duplicate),[rows]);
+  const duplicateSubmissionRows=useMemo(()=>rows.filter(r=>r.duplicateSubmission),[rows]);
   const errorRows=useMemo(()=>rows.filter(r=>r.errors.length>0),[rows]);
   const outsideAOIRows=useMemo(()=>rows.filter(r=>!r.inLagosAOI && Number.isFinite(r.lat) && Number.isFinite(r.lon)),[rows]);
   const uniqueSites=useMemo(()=>new Set(rows.map(r=>r.coordinateKey).filter(Boolean)).size,[rows]);
@@ -172,15 +173,15 @@ function App(){
       {view==='dashboard' ? <>
       <section className="kpis">
         <Kpi icon={<Database size={18}/>} label="Total Cases" value={filtered.length} note={lga==='All LGAs'&&category==='All Categories'?'All submitted observations':'Matching current filters'}/>
-        <Kpi icon={<MapPinned size={18}/>} label="Unique Sites" value={uniqueSites} note={`${duplicateRows.length} records share coordinates`}/>
-        <Kpi icon={<CircleAlert size={18}/>} label="Duplicate Submissions" value={duplicateRows.length} note="Same coordinates detected" danger={duplicateRows.length>0}/>
+        <Kpi icon={<MapPinned size={18}/>} label="Unique Sites" value={uniqueSites} note={`${duplicateSubmissionRows.length} repeat submissions beyond first occurrence`}/>
+        <Kpi icon={<CircleAlert size={18}/>} label="Duplicate Submissions" value={duplicateSubmissionRows.length} note="Same coordinates detected" danger={duplicateSubmissionRows.length>0}/>
         <Kpi icon={<AlertTriangle size={18}/>} label="Data Errors" value={errorRows.length} note="Missing/invalid fields" danger={errorRows.length>0}/>
         <Kpi icon={<CircleAlert size={18}/>} label="Outside Lagos AOI" value={outsideAOIRows.length} note="Coordinates outside AOI" danger={outsideAOIRows.length>0}/>
       </section>
 
       <section className="integrity-strip">
         <div><CheckCircle2 size={17}/><b>Submission Integrity</b><span>{uniqueSites.toLocaleString()} unique coordinate sites</span></div>
-        <div className={duplicateRows.length?'warn':''}><AlertTriangle size={16}/><b>{duplicateRows.length.toLocaleString()}</b><span>duplicate-coordinate records</span></div>
+        <div className={duplicateSubmissionRows.length?'warn':''}><AlertTriangle size={16}/><b>{duplicateSubmissionRows.length.toLocaleString()}</b><span>repeat submissions beyond first occurrence</span></div>
         <div className={errorRows.length?'warn':''}><AlertTriangle size={16}/><b>{errorRows.length.toLocaleString()}</b><span>records with data errors</span></div>
         <div className={outsideAOIRows.length?'warn':''}><AlertTriangle size={16}/><b>{outsideAOIRows.length.toLocaleString()}</b><span>records outside Lagos AOI</span></div>
       </section>
@@ -232,7 +233,7 @@ function App(){
           <div className="card chart-card"><div className="section-head"><h2>Waste Category Mix</h2><span>{filtered.length} cases</span></div><div className="chart-body"><Donut data={catCounts}/></div></div>
         </div>
       </section>
-      </> : <LeaderboardView leaderboard={leaderboard} duplicateRows={duplicateRows} errorRows={errorRows} outsideAOIRows={outsideAOIRows} />}
+      </> : <LeaderboardView leaderboard={leaderboard} duplicateRows={duplicateRows} duplicateSubmissionRows={duplicateSubmissionRows} errorRows={errorRows} outsideAOIRows={outsideAOIRows} />}
 
       <div className="footer-note">Nervs • Waste Data Collection Proof of Concept • Auto-refresh: {Math.round(REFRESH_MS/1000)}s • Leaderboard uses the Name column</div>
     </main>
@@ -243,17 +244,17 @@ function Kpi({icon,label,value,note,danger}){
   return <div className={`card kpi ${danger?'kpi-danger':''}`}><div className="kpi-top"><span>{label}</span><span className="kpi-icon">{icon}</span></div><div className="kpi-value">{value.toLocaleString()}</div><div className="kpi-note">{note}</div></div>
 }
 
-function LeaderboardView({leaderboard,duplicateRows,errorRows,outsideAOIRows}){
+function LeaderboardView({leaderboard,duplicateRows,duplicateSubmissionRows,errorRows,outsideAOIRows}){
   const total=leaderboard.reduce((s,p)=>s+p.submissions,0);
   return <section className="leaderboard-page">
     <div className="card leaderboard-hero">
       <div><div className="eyebrow">Field Performance</div><h2>Submission Leaderboard</h2><p>Ranked by unique submissions: records with valid coordinates that are not shared with another submission. Total submissions and duplicate records remain visible for review.</p></div>
-      <div className="leader-stats"><div><b>{leaderboard.length}</b><span>Submitters</span></div><div><b>{total}</b><span>Submissions</span></div><div><b>{duplicateRows.length}</b><span>Duplicate records</span></div><div><b>{outsideAOIRows.length}</b><span>Outside AOI</span></div><div><b>{errorRows.length}</b><span>Error records</span></div></div>
+      <div className="leader-stats"><div><b>{leaderboard.length}</b><span>Submitters</span></div><div><b>{total}</b><span>Submissions</span></div><div><b>{duplicateSubmissionRows.length}</b><span>Duplicate submissions</span></div><div><b>{outsideAOIRows.length}</b><span>Outside AOI</span></div><div><b>{errorRows.length}</b><span>Error records</span></div></div>
     </div>
     <div className="card leaderboard-card">
       <div className="section-head"><h2>Who has the most unique submissions?</h2><span>{leaderboard.length} people</span></div>
       <div className="leader-table-wrap">
-        <table className="leader-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Submissions</th><th>Unique Submissions</th><th>Duplicate Records</th><th>Errors</th><th>Integrity</th></tr></thead>
+        <table className="leader-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Submissions</th><th>Unique Submissions</th><th>Duplicate Submissions</th><th>Errors</th><th>Integrity</th></tr></thead>
         <tbody>{leaderboard.map((p,i)=>{
           const clean=p.duplicates===0 && p.errors===0;
           return <tr key={p.name}><td><span className={`rank rank-${i+1}`}>{i+1}</span></td><td><b>{p.name}</b></td><td className="number">{p.submissions}</td><td className="number">{p.uniqueSubmissions}</td><td className="number">{p.duplicates}</td><td className="number">{p.errors}</td><td><span className={`integrity-badge ${clean?'good':'bad'}`}>{clean?'Clean':'Review'}</span></td></tr>
@@ -261,7 +262,7 @@ function LeaderboardView({leaderboard,duplicateRows,errorRows,outsideAOIRows}){
         {!leaderboard.length && <div className="empty">No submissions yet.</div>}
       </div>
     </div>
-    <div className="card review-card"><div className="section-head"><h2>Integrity Check</h2><span>Coordinate-based duplicate detection</span></div><div className="review-grid"><div><AlertTriangle size={18}/><b>{duplicateRows.length}</b><span>records sharing coordinates</span></div><div><AlertTriangle size={18}/><b>{errorRows.length}</b><span>records with data errors</span></div><div><AlertTriangle size={18}/><b>{outsideAOIRows.length}</b><span>records outside Lagos AOI</span></div><div><CheckCircle2 size={18}/><b>{leaderboard.filter(p=>p.duplicates===0&&p.errors===0).length}</b><span>submitters with clean records</span></div></div></div>
+    <div className="card review-card"><div className="section-head"><h2>Integrity Check</h2><span>Coordinate-based duplicate detection; repeat occurrences only</span></div><div className="review-grid"><div><AlertTriangle size={18}/><b>{duplicateSubmissionRows.length}</b><span>repeat submissions beyond first occurrence</span></div><div><AlertTriangle size={18}/><b>{errorRows.length}</b><span>records with data errors</span></div><div><AlertTriangle size={18}/><b>{outsideAOIRows.length}</b><span>records outside Lagos AOI</span></div><div><CheckCircle2 size={18}/><b>{leaderboard.filter(p=>p.duplicates===0&&p.errors===0).length}</b><span>submitters with clean records</span></div></div></div>
   </section>
 }
 
