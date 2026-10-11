@@ -54,6 +54,7 @@ function getLeaderboard(rows){
         nameVariants: {},
         submissions: 0,
         uniqueSites: new Set(),
+        uniqueSubmissions: 0,
         duplicates: 0,
         errors: 0
       };
@@ -63,6 +64,8 @@ function getLeaderboard(rows){
     people[key].nameVariants[variantKey] = (people[key].nameVariants[variantKey] || 0) + 1;
     people[key].submissions += 1;
     if(r.coordinateKey) people[key].uniqueSites.add(r.coordinateKey);
+    // Count only records with valid coordinates that are not shared by any other submission.
+    if(r.coordinateKey && !r.duplicate) people[key].uniqueSubmissions += 1;
     if(r.duplicate) people[key].duplicates += 1;
     if(r.errors.length) people[key].errors += 1;
   });
@@ -78,11 +81,13 @@ function getLeaderboard(rows){
         name: titleCaseName(preferredVariant),
         submissions: p.submissions,
         uniqueSites: p.uniqueSites.size,
+        uniqueSubmissions: p.uniqueSubmissions,
         duplicates: p.duplicates,
         errors: p.errors
       };
     })
-    .sort((a,b) => b.submissions-a.submissions || b.uniqueSites-a.uniqueSites || a.name.localeCompare(b.name));
+    // Rank by clean, unique-coordinate submissions first; use unique sites and total submissions only as tie-breakers.
+    .sort((a,b) => b.uniqueSubmissions-a.uniqueSubmissions || b.uniqueSites-a.uniqueSites || b.submissions-a.submissions || a.name.localeCompare(b.name));
 }
 
 function App(){
@@ -242,16 +247,16 @@ function LeaderboardView({leaderboard,duplicateRows,errorRows,outsideAOIRows}){
   const total=leaderboard.reduce((s,p)=>s+p.submissions,0);
   return <section className="leaderboard-page">
     <div className="card leaderboard-hero">
-      <div><div className="eyebrow">Field Performance</div><h2>Submission Leaderboard</h2><p>Ranked by the <b>Name</b> column from the survey. Duplicate coordinates and data errors are shown for review.</p></div>
+      <div><div className="eyebrow">Field Performance</div><h2>Submission Leaderboard</h2><p>Ranked by unique submissions: records with valid coordinates that are not shared with another submission. Total submissions and duplicate records remain visible for review.</p></div>
       <div className="leader-stats"><div><b>{leaderboard.length}</b><span>Submitters</span></div><div><b>{total}</b><span>Submissions</span></div><div><b>{duplicateRows.length}</b><span>Duplicate records</span></div><div><b>{outsideAOIRows.length}</b><span>Outside AOI</span></div><div><b>{errorRows.length}</b><span>Error records</span></div></div>
     </div>
     <div className="card leaderboard-card">
-      <div className="section-head"><h2>Who is submitting the most?</h2><span>{leaderboard.length} people</span></div>
+      <div className="section-head"><h2>Who has the most unique submissions?</h2><span>{leaderboard.length} people</span></div>
       <div className="leader-table-wrap">
-        <table className="leader-table"><thead><tr><th>Rank</th><th>Name</th><th>Submissions</th><th>Unique Sites</th><th>Duplicate Records</th><th>Errors</th><th>Integrity</th></tr></thead>
+        <table className="leader-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Submissions</th><th>Unique Submissions</th><th>Duplicate Records</th><th>Errors</th><th>Integrity</th></tr></thead>
         <tbody>{leaderboard.map((p,i)=>{
           const clean=p.duplicates===0 && p.errors===0;
-          return <tr key={p.name}><td><span className={`rank rank-${i+1}`}>{i+1}</span></td><td><b>{p.name}</b></td><td className="number">{p.submissions}</td><td className="number">{p.uniqueSites}</td><td className="number">{p.duplicates}</td><td className="number">{p.errors}</td><td><span className={`integrity-badge ${clean?'good':'bad'}`}>{clean?'Clean':'Review'}</span></td></tr>
+          return <tr key={p.name}><td><span className={`rank rank-${i+1}`}>{i+1}</span></td><td><b>{p.name}</b></td><td className="number">{p.submissions}</td><td className="number">{p.uniqueSubmissions}</td><td className="number">{p.duplicates}</td><td className="number">{p.errors}</td><td><span className={`integrity-badge ${clean?'good':'bad'}`}>{clean?'Clean':'Review'}</span></td></tr>
         })}</tbody></table>
         {!leaderboard.length && <div className="empty">No submissions yet.</div>}
       </div>
