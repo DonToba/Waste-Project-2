@@ -71,9 +71,12 @@ export function normalizeRows(rows){
     };
   });
 
+  // Coordinate uniqueness and duplicate detection apply only to valid points inside the Lagos AOI.
   const coordinateCounts = {};
   normalized.forEach(row => {
-    if(row.coordinateKey) coordinateCounts[row.coordinateKey] = (coordinateCounts[row.coordinateKey] || 0) + 1;
+    if(row.coordinateKey && row.inLagosAOI) {
+      coordinateCounts[row.coordinateKey] = (coordinateCounts[row.coordinateKey] || 0) + 1;
+    }
   });
 
   // Mark every row that shares a coordinate for map review, but count only
@@ -81,9 +84,10 @@ export function normalizeRows(rows){
   // valid coordinate records = unique sites + duplicate submissions.
   const seenCoordinates = new Set();
   return normalized.map(row => {
-    const duplicate = Boolean(row.coordinateKey && coordinateCounts[row.coordinateKey] > 1);
-    const duplicateSubmission = Boolean(row.coordinateKey && seenCoordinates.has(row.coordinateKey));
-    if(row.coordinateKey) seenCoordinates.add(row.coordinateKey);
+    const eligibleForSiteCount = Boolean(row.coordinateKey && row.inLagosAOI);
+    const duplicate = Boolean(eligibleForSiteCount && coordinateCounts[row.coordinateKey] > 1);
+    const duplicateSubmission = Boolean(eligibleForSiteCount && seenCoordinates.has(row.coordinateKey));
+    if(eligibleForSiteCount) seenCoordinates.add(row.coordinateKey);
     const invalidCoordinates = !Number.isFinite(row.lat) || !Number.isFinite(row.lon) ||
       row.lat < -90 || row.lat > 90 || row.lon < -180 || row.lon > 180;
 
@@ -91,11 +95,12 @@ export function normalizeRows(rows){
       ...row,
       duplicate,
       duplicateSubmission,
-      coordinateCount: row.coordinateKey ? coordinateCounts[row.coordinateKey] : 0,
-      // Data errors are missing/invalid fields only. Duplicate and AOI flags
-      // are tracked separately and must not inflate this KPI.
+      coordinateCount: eligibleForSiteCount ? coordinateCounts[row.coordinateKey] : 0,
+      // Outside-AOI records are data errors for this project and are excluded
+      // from unique-site and duplicate-submission calculations.
       errors: [
         invalidCoordinates ? 'Invalid or missing coordinates' : '',
+        (!invalidCoordinates && !row.inLagosAOI) ? 'Coordinates outside Lagos AOI' : '',
         row.name === 'Unknown Submitter' ? 'Missing Name' : '',
         row.lga === 'Unknown' ? 'Missing Local Government' : '',
         row.category === 'Unclassified' ? 'Missing Waste Category' : ''

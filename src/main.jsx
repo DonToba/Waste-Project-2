@@ -53,6 +53,8 @@ function getLeaderboard(rows){
       people[key] = {
         nameVariants: {},
         submissions: 0,
+        lagosSubmissions: 0,
+        outsideAOI: 0,
         uniqueSites: new Set(),
         uniqueSubmissions: 0,
         duplicates: 0,
@@ -63,10 +65,15 @@ function getLeaderboard(rows){
     const variantKey = rawName.toLowerCase();
     people[key].nameVariants[variantKey] = (people[key].nameVariants[variantKey] || 0) + 1;
     people[key].submissions += 1;
-    if(r.coordinateKey) people[key].uniqueSites.add(r.coordinateKey);
-    // Count only records with valid coordinates that are not shared by any other submission.
-    if(r.coordinateKey && !r.duplicateSubmission) people[key].uniqueSubmissions += 1;
-    if(r.duplicateSubmission) people[key].duplicates += 1;
+    // Only valid coordinate records inside Lagos count toward site/submission performance.
+    if(r.coordinateKey && r.inLagosAOI) {
+      people[key].lagosSubmissions += 1;
+      people[key].uniqueSites.add(r.coordinateKey);
+      if(!r.duplicateSubmission) people[key].uniqueSubmissions += 1;
+      if(r.duplicateSubmission) people[key].duplicates += 1;
+    }
+    // Outside-AOI records are errors, never valid or unique leaderboard submissions.
+    if(r.coordinateKey && !r.inLagosAOI) people[key].outsideAOI += 1;
     if(r.errors.length) people[key].errors += 1;
   });
 
@@ -80,9 +87,11 @@ function getLeaderboard(rows){
       return {
         name: titleCaseName(preferredVariant),
         submissions: p.submissions,
+        lagosSubmissions: p.lagosSubmissions,
         uniqueSites: p.uniqueSites.size,
         uniqueSubmissions: p.uniqueSubmissions,
         duplicates: p.duplicates,
+        outsideAOI: p.outsideAOI,
         errors: p.errors
       };
     })
@@ -142,7 +151,7 @@ function App(){
   const duplicateSubmissionRows=useMemo(()=>rows.filter(r=>r.duplicateSubmission),[rows]);
   const errorRows=useMemo(()=>rows.filter(r=>r.errors.length>0),[rows]);
   const outsideAOIRows=useMemo(()=>rows.filter(r=>!r.inLagosAOI && Number.isFinite(r.lat) && Number.isFinite(r.lon)),[rows]);
-  const uniqueSites=useMemo(()=>new Set(rows.map(r=>r.coordinateKey).filter(Boolean)).size,[rows]);
+  const uniqueSites=useMemo(()=>new Set(rows.filter(r=>r.inLagosAOI).map(r=>r.coordinateKey).filter(Boolean)).size,[rows]);
 
   return <div className="app">
     <aside className="sidebar">
@@ -175,13 +184,13 @@ function App(){
         <Kpi icon={<Database size={18}/>} label="Total Cases" value={filtered.length} note={lga==='All LGAs'&&category==='All Categories'?'All submitted observations':'Matching current filters'}/>
         <Kpi icon={<MapPinned size={18}/>} label="Unique Sites" value={uniqueSites} note={`${duplicateSubmissionRows.length} repeat submissions beyond first occurrence`}/>
         <Kpi icon={<CircleAlert size={18}/>} label="Duplicate Submissions" value={duplicateSubmissionRows.length} note="Same coordinates detected" danger={duplicateSubmissionRows.length>0}/>
-        <Kpi icon={<AlertTriangle size={18}/>} label="Data Errors" value={errorRows.length} note="Missing/invalid fields" danger={errorRows.length>0}/>
+        <Kpi icon={<AlertTriangle size={18}/>} label="Data Errors" value={errorRows.length} note="Missing/invalid fields or outside Lagos AOI" danger={errorRows.length>0}/>
         <Kpi icon={<CircleAlert size={18}/>} label="Outside Lagos AOI" value={outsideAOIRows.length} note="Coordinates outside AOI" danger={outsideAOIRows.length>0}/>
       </section>
 
       <section className="integrity-strip">
         <div><CheckCircle2 size={17}/><b>Submission Integrity</b><span>{uniqueSites.toLocaleString()} unique coordinate sites</span></div>
-        <div className={duplicateSubmissionRows.length?'warn':''}><AlertTriangle size={16}/><b>{duplicateSubmissionRows.length.toLocaleString()}</b><span>repeat submissions beyond first occurrence</span></div>
+        <div className={duplicateSubmissionRows.length?'warn':''}><AlertTriangle size={16}/><b>{duplicateSubmissionRows.length.toLocaleString()}</b><span>repeat submissions beyond first occurrence inside Lagos</span></div>
         <div className={errorRows.length?'warn':''}><AlertTriangle size={16}/><b>{errorRows.length.toLocaleString()}</b><span>records with data errors</span></div>
         <div className={outsideAOIRows.length?'warn':''}><AlertTriangle size={16}/><b>{outsideAOIRows.length.toLocaleString()}</b><span>records outside Lagos AOI</span></div>
       </section>
@@ -248,21 +257,21 @@ function LeaderboardView({leaderboard,duplicateRows,duplicateSubmissionRows,erro
   const total=leaderboard.reduce((s,p)=>s+p.submissions,0);
   return <section className="leaderboard-page">
     <div className="card leaderboard-hero">
-      <div><div className="eyebrow">Field Performance</div><h2>Submission Leaderboard</h2><p>Ranked by unique submissions: records with valid coordinates that are not shared with another submission. Total submissions and duplicate records remain visible for review.</p></div>
+      <div><div className="eyebrow">Field Performance</div><h2>Submission Leaderboard</h2><p>Ranked only by unique coordinate submissions inside Lagos. Outside-AOI records are excluded from performance totals and counted as errors.</p></div>
       <div className="leader-stats"><div><b>{leaderboard.length}</b><span>Submitters</span></div><div><b>{total}</b><span>Submissions</span></div><div><b>{duplicateSubmissionRows.length}</b><span>Duplicate submissions</span></div><div><b>{outsideAOIRows.length}</b><span>Outside AOI</span></div><div><b>{errorRows.length}</b><span>Error records</span></div></div>
     </div>
     <div className="card leaderboard-card">
       <div className="section-head"><h2>Who has the most unique submissions?</h2><span>{leaderboard.length} people</span></div>
       <div className="leader-table-wrap">
-        <table className="leader-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Submissions</th><th>Unique Submissions</th><th>Duplicate Submissions</th><th>Errors</th><th>Integrity</th></tr></thead>
+        <table className="leader-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Submissions</th><th>Lagos Submissions</th><th>Unique Submissions (Lagos)</th><th>Duplicate Submissions (Lagos)</th><th>Outside AOI</th><th>Errors</th><th>Integrity</th></tr></thead>
         <tbody>{leaderboard.map((p,i)=>{
           const clean=p.duplicates===0 && p.errors===0;
-          return <tr key={p.name}><td><span className={`rank rank-${i+1}`}>{i+1}</span></td><td><b>{p.name}</b></td><td className="number">{p.submissions}</td><td className="number">{p.uniqueSubmissions}</td><td className="number">{p.duplicates}</td><td className="number">{p.errors}</td><td><span className={`integrity-badge ${clean?'good':'bad'}`}>{clean?'Clean':'Review'}</span></td></tr>
+          return <tr key={p.name}><td><span className={`rank rank-${i+1}`}>{i+1}</span></td><td><b>{p.name}</b></td><td className="number">{p.submissions}</td><td className="number">{p.lagosSubmissions}</td><td className="number">{p.uniqueSubmissions}</td><td className="number">{p.duplicates}</td><td className="number">{p.outsideAOI}</td><td className="number">{p.errors}</td><td><span className={`integrity-badge ${clean?'good':'bad'}`}>{clean?'Clean':'Review'}</span></td></tr>
         })}</tbody></table>
         {!leaderboard.length && <div className="empty">No submissions yet.</div>}
       </div>
     </div>
-    <div className="card review-card"><div className="section-head"><h2>Integrity Check</h2><span>Coordinate-based duplicate detection; repeat occurrences only</span></div><div className="review-grid"><div><AlertTriangle size={18}/><b>{duplicateSubmissionRows.length}</b><span>repeat submissions beyond first occurrence</span></div><div><AlertTriangle size={18}/><b>{errorRows.length}</b><span>records with data errors</span></div><div><AlertTriangle size={18}/><b>{outsideAOIRows.length}</b><span>records outside Lagos AOI</span></div><div><CheckCircle2 size={18}/><b>{leaderboard.filter(p=>p.duplicates===0&&p.errors===0).length}</b><span>submitters with clean records</span></div></div></div>
+    <div className="card review-card"><div className="section-head"><h2>Integrity Check</h2><span>Coordinate-based duplicate detection; repeat occurrences only</span></div><div className="review-grid"><div><AlertTriangle size={18}/><b>{duplicateSubmissionRows.length}</b><span>repeat submissions beyond first occurrence inside Lagos</span></div><div><AlertTriangle size={18}/><b>{errorRows.length}</b><span>records with data errors</span></div><div><AlertTriangle size={18}/><b>{outsideAOIRows.length}</b><span>records outside Lagos AOI</span></div><div><CheckCircle2 size={18}/><b>{leaderboard.filter(p=>p.duplicates===0&&p.errors===0).length}</b><span>submitters with clean records</span></div></div></div>
   </section>
 }
 
